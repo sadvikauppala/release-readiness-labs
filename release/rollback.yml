@@ -1,2 +1,18 @@
-rollback_strategy: 
-target_version: 
+release: OrderFlow v2.3.0
+strategy: Kubernetes Deployment rolling-revision rollback
+target_version: "Previous known-good Deployment revision (record before release approval)"
+trigger_conditions:
+	- Readiness or liveness probes fail after rollout
+	- Error rate, latency, or order-processing health breaches release SLOs
+	- Data integrity or critical business-flow validation fails
+procedure:
+	- Pause further promotion and notify the incident commander and release approver
+	- Record the current Deployment revision, image digest, and observed symptoms
+	- Run kubectl rollout undo deployment/orderflow -n orderflow-production
+	- Wait for kubectl rollout status deployment/orderflow -n orderflow-production
+	- Verify /health, key order flows, error rate, and service metrics
+	- If rollback fails, route traffic away from the affected release and invoke the incident plan
+	- Record the final deployed image digest and incident/change reference
+data_rollback: Not applicable; v2.3.0 contains no database migration
+owner: Production on-call engineer
+post_rollback_review_required: true

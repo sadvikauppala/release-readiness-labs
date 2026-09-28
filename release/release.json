@@ -1,5 +1,14 @@
 {
-  "Version": "1.0",
-  "ReleaseDate": "2024-01-01",
-  "Author": "DevOps Team"
+  "version": "2.3.0",
+  "releaseTag": "v2.3.0",
+  "releaseDate": "2026-09-28",
+  "application": "OrderFlow",
+  "artifact": {
+    "registry": "Azure Container Registry",
+    "tagFormat": "v2.3.0-<full-git-commit-sha>",
+    "immutable": true,
+    "digestRecordedIn": "release-summary.yml"
+  },
+  "sourceOfTruth": "Git tag v2.3.0 and its exact commit SHA",
+  "status": "release-candidate-pending-external-approval-and-infrastructure"
 }

@@ -1,24 +1,73 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: lab-app
+  name: orderflow
+  namespace: orderflow-production
+  labels:
+    app.kubernetes.io/name: orderflow
+    app.kubernetes.io/version: "2.3.0"
 spec:
   replicas: 3
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
-      app: lab-app
+      app.kubernetes.io/name: orderflow
   template:
     metadata:
       labels:
-        app: lab-app
+        app.kubernetes.io/name: orderflow
+        app.kubernetes.io/version: "2.3.0"
     spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
-      - name: lab-app
-        image: lab-app:production-build
-        ports:
-        - containerPort: 3000
-        env:
-        - name: API_KEY
-          value: "test-api-key-1234"
-        - name: DATABASE_PASSWORD
-          value: "password123"
+        - name: orderflow
+          image: __ORDERFLOW_IMAGE__
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: RELEASE_VERSION
+              value: __RELEASE_VERSION__
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]

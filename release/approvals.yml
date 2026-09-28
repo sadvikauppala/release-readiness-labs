@@ -1,3 +1,24 @@
-approvedBy: 
-reviewDate: 
-releaseManager: 
+release: OrderFlow v2.3.0
+environment: production
+approval_required: true
+approval_status: pending
+approved_by: null
+review_date: null
+release_manager: "To be assigned by release owner"
+github_environment: production
+required_reviewers:
+  - "Configure at least one authorized production reviewer in GitHub environment protection rules"
+checklist:
+  - item: Release tag v2.3.0 points to the reviewed commit
+    status: pending
+  - item: Validation workflow is green for that exact commit
+    status: pending
+  - item: Artifact image tag and digest are recorded
+    status: pending
+  - item: AKS production target and change window are confirmed
+    status: pending
+  - item: Backup and rollback target are verified
+    status: pending
+  - item: Monitoring and post-deployment health checks are staffed
+    status: pending
+approval_rule: Do not approve while any checklist item is pending or failed

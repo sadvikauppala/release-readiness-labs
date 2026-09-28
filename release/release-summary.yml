@@ -1,5 +1,22 @@
-status: unknown
+application: OrderFlow
+version: 2.3.0
+release_tag: v2.3.0
+source_commit: pending-release-tag
 environment: production
-version: latest
-approval: pending
-rollback: none
+status: release-candidate
+deployment_strategy: validated rolling update on Azure Kubernetes Service
+infrastructure_decision: Azure Kubernetes Service (AKS) with Azure Container Registry (ACR)
+artifact:
+  image: "${AZURE_ACR_NAME}.azurecr.io/orderflow:v2.3.0-<full-git-commit-sha>"
+  digest: pending-successful-release-build
+validation:
+  local_automated_tests: passed-2-of-2
+  github_actions_run: pending
+  release_metadata: checked-in-and-version-aligned
+  production_deployment: not-executed
+  health_checks: pending-production-deployment
+approval:
+  required: true
+  status: pending
+rollback: "kubectl rollout undo deployment/orderflow -n orderflow-production"
+readiness: blocked-until-ci-approval-and-infrastructure-prerequisites-pass

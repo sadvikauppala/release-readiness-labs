@@ -1,11 +1,11 @@
 {
-  "name": "release-readiness-lab",
-  "version": "1.0.0",
+  "name": "orderflow",
+  "version": "2.3.0",
   "description": "A simple Express app",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Validation passed: application is stable.\""
+    "test": "node --test"
   },
   "dependencies": {
     "express": "^4.18.2"

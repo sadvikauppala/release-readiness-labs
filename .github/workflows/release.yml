@@ -1,33 +1,183 @@
-name: Release Pipeline
+name: OrderFlow Release Pipeline
 
 on:
+  pull_request:
+    branches: [main]
   push:
-    branches:
-      - main
+    branches: [main, 'investigation/**']
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: orderflow-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  deploy-production:
+  validate-release:
+    name: Validate release candidate
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Check out source
+        uses: actions/checkout@v4
 
-      - name: Deploy to Production
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --prefix app
+
+      - name: Run application tests
+        run: npm test --prefix app
+
+      - name: Verify release version and deployment target
+        env:
+          RELEASE_REF: ${{ github.ref }}
         run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const app = require('./app/package.json');
+          const release = JSON.parse(fs.readFileSync('./release/release.json', 'utf8'));
+          const deployment = fs.readFileSync('./release/deployment-config.yml', 'utf8');
+
+          assert.equal(app.version, '2.3.0', 'app package version must be 2.3.0');
+          assert.equal(release.version, app.version, 'release and app versions must match');
+          assert.equal(release.releaseTag, `v${app.version}`, 'release tag must match the app version');
+          assert.match(deployment, /infrastructure:\s*aks/,
+            'production deployment target must be AKS');
+          assert.match(deployment, /release_version:\s*2\.3\.0/,
+            'deployment version must match the app version');
+          assert.match(deployment, /release_tag:\s*v2\.3\.0/,
+            'deployment tag must match the app version');
+
+          if (process.env.RELEASE_REF.startsWith('refs/tags/')) {
+            assert.equal(process.env.RELEASE_REF, `refs/tags/v${app.version}`,
+              'release tag must match the application version');
+          }
+          NODE
+
+      - name: Validate deployment scripts
+        run: bash -n scripts/deploy.sh scripts/rollback.sh
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+
+      - name: Validate Terraform configuration
+        run: |
+          terraform -chdir=deployment/terraform fmt -check -recursive
+          terraform -chdir=deployment/terraform init -backend=false
+          terraform -chdir=deployment/terraform validate
+
+      - name: Build container without publishing
+        run: docker build --tag "orderflow-validation:${GITHUB_SHA}" .
+
+  publish-release-image:
+    name: Build and publish immutable release image
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: validate-release
+    runs-on: [self-hosted, linux, x64, orderflow-production]
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_VERSION: ${{ github.ref_name }}
+      IMAGE_URL: ${{ vars.AZURE_ACR_NAME }}.azurecr.io/orderflow:${{ github.ref_name }}-${{ github.sha }}
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+    steps:
+      - name: Check out validated release source
+        uses: actions/checkout@v4
+
+      - name: Sign in to Azure with workload identity federation
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Authenticate Docker to Azure Container Registry
+        run: az acr login --name "$AZURE_ACR_NAME"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and publish immutable release image
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE_URL }}
+
+      - name: Record release provenance
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          {
+            echo "## OrderFlow release provenance"
+            echo "- Release: $RELEASE_VERSION"
+            echo "- Source commit: $GITHUB_SHA"
+            echo "- Immutable image: $IMAGE_URL"
+            echo "- Image digest: $IMAGE_DIGEST"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-production:
+    name: Deploy approved release to AKS
+    if: startsWith(github.ref, 'refs/tags/v') && vars.PRODUCTION_RELEASE_ENABLED == 'true'
+    needs: [validate-release, publish-release-image]
+    runs-on: [self-hosted, linux, x64, orderflow-production]
+    environment:
+      name: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_VERSION: ${{ github.ref_name }}
+      IMAGE_URL: ${{ vars.AZURE_ACR_NAME }}.azurecr.io/orderflow:${{ github.ref_name }}-${{ github.sha }}
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+    steps:
+      - name: Check out approved release source
+        uses: actions/checkout@v4
+
+      - name: Sign in to Azure with workload identity federation
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Select AKS cluster and deploy
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+          IMAGE_URL: ${{ env.IMAGE_URL }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          az aks get-credentials \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AKS_CLUSTER_NAME" \
+            --overwrite-existing
+          az aks install-cli \
+            --install-location "$RUNNER_TEMP/kubectl" \
+            --kubelogin-install-location "$RUNNER_TEMP/kubelogin"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          export PATH="$RUNNER_TEMP:$PATH"
+          kubelogin convert-kubeconfig -l azurecli
           chmod +x scripts/deploy.sh
           ./scripts/deploy.sh
 
-  validate-release:
-    runs-on: ubuntu-latest
-    needs: deploy-production
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
 
-      - name: Run Tests
-        run: |
-          echo "Running validation tests..."
-          npm install --prefix app
-          npm test --prefix app
-          echo "Validation complete - some tests failed because deployment config has errors"
-          exit 1

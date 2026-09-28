@@ -1,7 +1,25 @@
+application: OrderFlow
 environment: production
-image_tag: production-build
-secrets:
-  API_KEY: ${API_KEY}
-  DATABASE_PASSWORD: password123
-  TOKEN: abcd1234
-  AWS_SECRET: test-secret
+release_version: 2.3.0
+release_tag: v2.3.0
+image_tag_format: "v2.3.0-<full-git-commit-sha>"
+infrastructure: aks
+cluster_resource_group: "${{ vars.AZURE_RESOURCE_GROUP }}"
+cluster_name: "${{ vars.AKS_CLUSTER_NAME }}"
+container_registry: acr
+registry_name: "${{ vars.AZURE_ACR_NAME }}"
+kubernetes_namespace: orderflow-production
+deployment_name: orderflow
+production_environment: production
+production_approval_required: true
+production_release_enabled: "${{ vars.PRODUCTION_RELEASE_ENABLED }}"
+default_production_release_enabled: false
+azure_authentication: github-actions-oidc-workload-identity
+secret_policy:
+  repository_or_workflow: never-commit-credentials
+  cloud_authentication: short-lived-oidc-token
+  application_runtime_secrets: none-currently-required
+  future_runtime_secrets: azure-key-vault-through-workload-identity
+cluster_connectivity: trusted-self-hosted-runner-inside-approved-network
+deployment_strategy: rolling-update-with-health-probes
+rollback_command: "kubectl rollout undo deployment/orderflow -n orderflow-production"
