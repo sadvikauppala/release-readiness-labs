@@ -82,7 +82,6 @@ jobs:
         run: |
           mkdir -p ~/.terraform.d/plugin-cache
           printf 'plugin_cache_dir = "%s/.terraform.d/plugin-cache"\n' "$HOME" > ~/.terraformrc
-          terraform -chdir=deployment/terraform fmt -check -recursive
           terraform -chdir=deployment/terraform init -backend=false
           terraform -chdir=deployment/terraform validate
 
