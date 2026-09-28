@@ -29,7 +29,14 @@ variable "acr_name" {
 }
 
 variable "github_deploy_identity_object_id" {
-  description = "Optional object ID of the GitHub Actions federated identity. Set after bootstrapping the cluster and production namespace; no client secret is used."
+  description = "Optional object ID of the GitHub Actions production deployer identity. Set after bootstrapping the cluster and production namespace; no client secret is used."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "github_image_publisher_identity_object_id" {
+  description = "Optional object ID of the federated GitHub image-publishing identity that needs ACR push only."
   type        = string
   default     = null
   nullable    = true
