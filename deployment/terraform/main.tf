@@ -10,7 +10,7 @@ terraform {
 }
 
 provider "azurerm" {
-  features        {}
+  features {}
   subscription_id = var.subscription_id
 }
 
@@ -78,19 +78,19 @@ resource "azurerm_role_assignment" "aks_pull_acr" {
 }
 
 resource "azurerm_role_assignment" "github_deploy_aks" {
-  count                = var.github_deploy_identity_object_id == null ? 0 : 1
-  scope                = "${azurerm_kubernetes_cluster.orderflow.id}/namespaces/orderflow-production"
+  count               = var.github_deploy_identity_object_id == null ? 0 : 1
+  scope               = "${azurerm_kubernetes_cluster.orderflow.id}/namespaces/orderflow-production"
   role_definition_name = "Azure Kubernetes Service RBAC Writer"
-  principal_id         = var.github_deploy_identity_object_id
-  principal_type       = "ServicePrincipal"
+  principal_id        = var.github_deploy_identity_object_id
+  principal_type      = "ServicePrincipal"
 }
 
 resource "azurerm_role_assignment" "github_push_acr" {
-  count                = var.github_image_publisher_identity_object_id == null ? 0 : 1
+  count               = var.github_image_publisher_identity_object_id == null ? 0 : 1
   scope                = azurerm_container_registry.orderflow.id
   role_definition_name = "AcrPush"
-  principal_id         = var.github_image_publisher_identity_object_id
-  principal_type       = "ServicePrincipal"
+  principal_id        = var.github_image_publisher_identity_object_id
+  principal_type      = "ServicePrincipal"
 }
 
 locals {

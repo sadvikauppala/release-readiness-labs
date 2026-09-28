@@ -71,8 +71,17 @@ jobs:
           terraform_version: 1.10.5
           terraform_wrapper: false
 
+      - name: Cache Terraform providers
+        uses: actions/cache@v4
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: terraform-${{ runner.os }}-azurerm-4
+          restore-keys: terraform-${{ runner.os }}-
+
       - name: Validate Terraform configuration
         run: |
+          mkdir -p ~/.terraform.d/plugin-cache
+          printf 'plugin_cache_dir = "%s/.terraform.d/plugin-cache"\n' "$HOME" > ~/.terraformrc
           terraform -chdir=deployment/terraform fmt -check -recursive
           terraform -chdir=deployment/terraform init -backend=false
           terraform -chdir=deployment/terraform validate
